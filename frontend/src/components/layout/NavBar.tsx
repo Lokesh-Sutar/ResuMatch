@@ -7,8 +7,8 @@ export function NavBar() {
   const currentStep = pathname.startsWith('/results') ? 3 : pathname.startsWith('/analyze') ? 2 : 1
 
   return (
-    <nav className="sticky top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-7xl rounded-3xl border border-white/70 bg-white/65 shadow-glow backdrop-blur-xl">
+    <nav className="fixed left-0 right-0 top-0 z-50 px-4 pt-4 sm:px-6 lg:px-8"> 
+      <div className="mx-auto w-full max-w-7xl rounded-3xl border border-white/70 bg-white/65 shadow-glow backdrop-blur-md">
         <div className="flex items-center justify-between px-4 py-2 sm:px-6 lg:px-8">
           <NavLink to="/" className="inline-flex items-center gap-3">
             <img

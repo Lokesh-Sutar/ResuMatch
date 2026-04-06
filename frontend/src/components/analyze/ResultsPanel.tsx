@@ -93,6 +93,29 @@ export function ResultsPanel({ isLoading, error, result }: ResultsPanelProps) {
 }
 
 function DeepInsightsPanel({ deepInsights }: { deepInsights: DeepInsights }) {
+  const knownKeys: Array<keyof DeepInsights> = [
+    'overallAssessment',
+    'experienceLevel',
+    'salaryRange',
+    'hiringRecommendation',
+    'strengths',
+    'weaknesses',
+    'redFlags',
+    'standoutQualities',
+    'recommendedActions',
+    'interviewFocus',
+    'experienceAnalysis',
+    'educationFit',
+    'cultureFit',
+    'careerTrajectory',
+    'technicalDepth',
+    'communicationSkills',
+  ]
+
+  const additionalEntries = Object.entries(deepInsights as Record<string, unknown>).filter(([key, value]) => {
+    return !knownKeys.includes(key as keyof DeepInsights) && value !== null && value !== undefined && value !== ''
+  })
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <h3 className="text-sm font-semibold text-slate-900">
@@ -124,8 +147,29 @@ function DeepInsightsPanel({ deepInsights }: { deepInsights: DeepInsights }) {
         <InsightText title="Technical Depth" value={deepInsights.technicalDepth} />
         <InsightText title="Communication Skills" value={deepInsights.communicationSkills} />
       </div>
+
+      {additionalEntries.length > 0 && (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Additional Insights</p>
+          <div className="mt-2 space-y-2 text-sm text-slate-700">
+            {additionalEntries.map(([key, value]) => (
+              <div key={key}>
+                <p className="font-semibold text-slate-800">{formatLabel(key)}</p>
+                <p>{Array.isArray(value) ? value.join(', ') : String(value)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function formatLabel(raw: string) {
+  return raw
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (char) => char.toUpperCase())
+    .trim()
 }
 
 function InsightList({ title, items }: { title: string; items?: string[] }) {

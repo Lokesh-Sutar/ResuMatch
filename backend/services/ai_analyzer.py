@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 from typing import Dict, List
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -16,6 +17,37 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-pro")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+
+
+def _parse_ai_json(result_text: str) -> Dict:
+    """Parse AI output into JSON, tolerating fences and trailing content."""
+    text = result_text.strip()
+
+    # Remove code fences if present
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    text = text.strip()
+
+    # Fast path: valid pure JSON
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+        raise ValueError("AI response JSON root must be an object")
+    except json.JSONDecodeError:
+        pass
+
+    # Recovery path: find first JSON object and decode only that segment
+    object_start = text.find("{")
+    if object_start == -1:
+        raise json.JSONDecodeError("No JSON object found in AI response", text, 0)
+
+    decoder = json.JSONDecoder()
+    parsed, _ = decoder.raw_decode(text[object_start:])
+    if not isinstance(parsed, dict):
+        raise ValueError("AI response JSON root must be an object")
+
+    return parsed
 
 def analyze_with_ai(resume_text: str, job_description: str) -> Dict:
     """
@@ -91,20 +123,10 @@ Respond ONLY with valid JSON, no additional text.
 """
         
         response = model.generate_content(prompt)
-        result_text = response.text.strip()
-        
-        # Remove markdown code blocks if present
-        if result_text.startswith("```json"):
-            result_text = result_text[7:]
-        if result_text.startswith("```"):
-            result_text = result_text[3:]
-        if result_text.endswith("```"):
-            result_text = result_text[:-3]
-        
-        result_text = result_text.strip()
-        
-        # Parse JSON response
-        analysis = json.loads(result_text)
+        result_text = (response.text or "").strip()
+
+        # Parse JSON response robustly
+        analysis = _parse_ai_json(result_text)
         
         # Validate response structure
         required_keys = ["score", "extractedSkills", "matchedSkills", "missingSkills", "suggestions", "deepInsights"]
@@ -120,6 +142,9 @@ Respond ONLY with valid JSON, no additional text.
             "communicationSkills", "recommendedActions", "interviewFocus",
             "salaryRange", "hiringRecommendation"
         ]
+        if not isinstance(analysis.get("deepInsights"), dict):
+            analysis["deepInsights"] = {}
+
         for key in deep_insights_keys:
             if key not in analysis["deepInsights"]:
                 analysis["deepInsights"][key] = "Not analyzed"
