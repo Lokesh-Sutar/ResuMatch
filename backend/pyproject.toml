@@ -2,7 +2,7 @@
 name = "venv"
 version = "1.0.0"
 description = "AI-Powered Resume Analyzer Backend"
-requires-python = ">=3.10"
+requires-python = "=3.12"
 dependencies = [
     "fastapi==0.104.1",
     "uvicorn[standard]==0.24.0",
