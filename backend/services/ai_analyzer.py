@@ -3,6 +3,7 @@
 import os
 import json
 import re
+import threading
 from typing import Dict, List
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -11,12 +12,59 @@ import markdown
 # Load environment variables
 load_dotenv()
 
-# Configure Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-pro")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+
+def _load_gemini_api_keys() -> List[str]:
+    """Load Gemini API keys from env with support for round-robin key pools."""
+    keys: List[str] = []
+
+    csv_keys = os.getenv("GEMINI_API_KEYS", "").strip()
+    if csv_keys:
+        keys.extend([value.strip() for value in csv_keys.split(",") if value.strip()])
+
+    # Support explicit numbered keys: GEMINI_API_KEY_1..GEMINI_API_KEY_3 (or more)
+    for i in range(1, 11):
+        value = os.getenv(f"GEMINI_API_KEY_{i}", "").strip()
+        if value:
+            keys.append(value)
+
+    # Backward-compatible single key
+    single_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if single_key:
+        keys.append(single_key)
+
+    # De-duplicate while preserving order
+    unique_keys: List[str] = []
+    seen = set()
+    for key in keys:
+        if key not in seen:
+            seen.add(key)
+            unique_keys.append(key)
+
+    return unique_keys
+
+
+GEMINI_API_KEYS = _load_gemini_api_keys()
+_ROUND_ROBIN_INDEX = 0
+_ROUND_ROBIN_LOCK = threading.Lock()
+_GENAI_CALL_LOCK = threading.Lock()
+
+
+def _keys_for_attempt_order() -> List[str]:
+    """Return keys in round-robin start order for this request."""
+    if not GEMINI_API_KEYS:
+        return []
+
+    global _ROUND_ROBIN_INDEX
+    with _ROUND_ROBIN_LOCK:
+        start = _ROUND_ROBIN_INDEX
+        _ROUND_ROBIN_INDEX = (_ROUND_ROBIN_INDEX + 1) % len(GEMINI_API_KEYS)
+
+    return [GEMINI_API_KEYS[(start + offset) % len(GEMINI_API_KEYS)] for offset in range(len(GEMINI_API_KEYS))]
+
+if GEMINI_API_KEYS:
+    genai.configure(api_key=GEMINI_API_KEYS[0])
 
 
 def _parse_ai_json(result_text: str) -> Dict:
@@ -49,6 +97,53 @@ def _parse_ai_json(result_text: str) -> Dict:
 
     return parsed
 
+
+def _generate_with_json_mode(model: genai.GenerativeModel, prompt: str):
+    """Generate content with JSON-biased config when supported."""
+    return model.generate_content(
+        prompt,
+        generation_config={
+            "temperature": 0.2,
+            "response_mime_type": "application/json",
+        },
+    )
+
+
+def _repair_json_with_ai(model: genai.GenerativeModel, raw_text: str) -> Dict:
+    """Ask model to repair malformed JSON into a valid single JSON object."""
+    repair_prompt = f"""You are a strict JSON repair tool.
+Take the following malformed JSON-like text and return ONLY ONE valid JSON object.
+Do not add markdown fences. Do not add explanations.
+Preserve original meaning as much as possible.
+
+TEXT TO REPAIR:
+{raw_text}
+"""
+    repaired = _generate_with_json_mode(model, repair_prompt)
+    repaired_text = (repaired.text or "").strip()
+    return _parse_ai_json(repaired_text)
+
+
+def _analyze_with_single_key(api_key: str, prompt: str) -> Dict:
+    """Run a single analysis attempt with one specific API key."""
+    with _GENAI_CALL_LOCK:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(GEMINI_MODEL)
+
+        try:
+            response = _generate_with_json_mode(model, prompt)
+        except Exception:
+            # Fallback if model/version does not support response_mime_type
+            response = model.generate_content(prompt)
+
+        result_text = (response.text or "").strip()
+
+        # Parse JSON response robustly; attempt AI-based repair on malformed JSON
+        try:
+            return _parse_ai_json(result_text)
+        except json.JSONDecodeError:
+            return _repair_json_with_ai(model, result_text)
+
 def analyze_with_ai(resume_text: str, job_description: str) -> Dict:
     """
     Analyze resume against job description using Gemini AI with deep insights
@@ -60,12 +155,10 @@ def analyze_with_ai(resume_text: str, job_description: str) -> Dict:
     Returns:
         Dictionary with comprehensive analysis results
     """
-    if not GEMINI_API_KEY:
-        raise Exception("GEMINI_API_KEY not found in environment variables")
+    if not GEMINI_API_KEYS:
+        raise Exception("Gemini API key not found. Set GEMINI_API_KEYS or GEMINI_API_KEY_1..3 in environment variables")
     
     try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        
         prompt = f"""You are an expert resume analyzer and career consultant with deep knowledge of hiring practices. Analyze the following resume against the job description and provide a comprehensive, detailed assessment.
 
 RESUME:
@@ -121,13 +214,21 @@ For deep insights:
 
 Respond ONLY with valid JSON, no additional text.
 """
-        
-        response = model.generate_content(prompt)
-        result_text = (response.text or "").strip()
 
-        # Parse JSON response robustly
-        analysis = _parse_ai_json(result_text)
-        
+        analysis = None
+        attempt_errors: List[str] = []
+
+        for index, api_key in enumerate(_keys_for_attempt_order(), start=1):
+            try:
+                analysis = _analyze_with_single_key(api_key, prompt)
+                break
+            except Exception as key_error:
+                key_tail = api_key[-6:] if len(api_key) >= 6 else api_key
+                attempt_errors.append(f"key#{index}(...{key_tail}): {str(key_error)}")
+
+        if analysis is None:
+            raise Exception("All configured Gemini API keys failed. " + " | ".join(attempt_errors))
+
         # Validate response structure
         required_keys = ["score", "extractedSkills", "matchedSkills", "missingSkills", "suggestions", "deepInsights"]
         for key in required_keys:
@@ -169,4 +270,4 @@ Respond ONLY with valid JSON, no additional text.
 
 def is_ai_available() -> bool:
     """Check if AI service is available"""
-    return GEMINI_API_KEY is not None
+    return len(GEMINI_API_KEYS) > 0

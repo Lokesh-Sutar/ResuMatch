@@ -6,7 +6,7 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 interface AnalyzeFormProps {
   isLoading: boolean
-  onAnalyze: (file: File, jobDescription: string) => Promise<void>
+  onAnalyze: (file: File, jobDescription: string, previewDataUrl?: string) => Promise<void>
 }
 
 export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
@@ -14,6 +14,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
   const [jobDescription, setJobDescription] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const previewUrlRef = useRef<string | null>(null)
@@ -61,7 +62,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
       return
     }
 
-    await onAnalyze(resumeFile, trimmedDescription)
+    await onAnalyze(resumeFile, trimmedDescription, previewDataUrl ?? undefined)
   }
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
           previewUrlRef.current = null
         }
         setPreviewImageUrl(null)
+        setPreviewDataUrl(null)
         setPreviewError(null)
         setIsPreviewLoading(false)
         return
@@ -103,8 +105,67 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
 
         await page.render({ canvasContext: context, viewport }).promise
 
+        const cropWhiteMargins = (source: HTMLCanvasElement) => {
+          const ctx = source.getContext('2d')
+          if (!ctx) {
+            return source
+          }
+
+          const { width, height } = source
+          const { data } = ctx.getImageData(0, 0, width, height)
+
+          let minX = width
+          let minY = height
+          let maxX = 0
+          let maxY = 0
+          let found = false
+
+          for (let y = 0; y < height; y += 2) {
+            for (let x = 0; x < width; x += 2) {
+              const i = (y * width + x) * 4
+              const r = data[i]
+              const g = data[i + 1]
+              const b = data[i + 2]
+              const a = data[i + 3]
+
+              const isNearWhite = r > 246 && g > 246 && b > 246
+              if (a > 0 && !isNearWhite) {
+                found = true
+                if (x < minX) minX = x
+                if (x > maxX) maxX = x
+                if (y < minY) minY = y
+                if (y > maxY) maxY = y
+              }
+            }
+          }
+
+          if (!found) {
+            return source
+          }
+
+          const padding = 14
+          const sx = Math.max(0, minX - padding)
+          const sy = Math.max(0, minY - padding)
+          const sw = Math.min(width - sx, maxX - minX + 1 + padding * 2)
+          const sh = Math.min(height - sy, maxY - minY + 1 + padding * 2)
+
+          const cropped = document.createElement('canvas')
+          cropped.width = sw
+          cropped.height = sh
+          const croppedCtx = cropped.getContext('2d')
+          if (!croppedCtx) {
+            return source
+          }
+
+          croppedCtx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh)
+          return cropped
+        }
+
+        const previewCanvas = cropWhiteMargins(canvas)
+        const previewData = previewCanvas.toDataURL('image/webp', 0.72)
+
         const blob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob(
+          previewCanvas.toBlob(
             (value) => {
               if (!value) {
                 reject(new Error('Failed to create preview image.'))
@@ -124,6 +185,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
           }
           previewUrlRef.current = currentPreviewUrl
           setPreviewImageUrl(currentPreviewUrl)
+          setPreviewDataUrl(previewData)
         }
 
         await pdf.destroy()
@@ -135,6 +197,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
             previewUrlRef.current = null
           }
           setPreviewImageUrl(null)
+          setPreviewDataUrl(null)
         }
       } finally {
         if (!canceled) {

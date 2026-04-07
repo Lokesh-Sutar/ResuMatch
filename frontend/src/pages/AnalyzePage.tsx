@@ -7,6 +7,7 @@ export function AnalyzePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingPreviewUrl, setLoadingPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -16,7 +17,8 @@ export function AnalyzePage() {
     }
   }, [location.state])
 
-  const handleAnalyze = async (file: File, jobDescription: string) => {
+  const handleAnalyze = async (file: File, jobDescription: string, previewDataUrl?: string) => {
+    setLoadingPreviewUrl(previewDataUrl ?? null)
     setIsLoading(true)
     setError(null)
 
@@ -28,16 +30,24 @@ export function AnalyzePage() {
       setError(message)
     } finally {
       setIsLoading(false)
+      setLoadingPreviewUrl(null)
     }
   }
 
   if (isLoading) {
     return (
-      <main className="mx-auto flex min-h-[calc(100vh-88px)] w-full max-w-7xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="w-full max-w-xl rounded-2xl border border-slate-200/70 bg-white/80 p-8 text-center shadow-glow backdrop-blur-xl">
-          <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-brand-300 border-t-brand-600" />
-          <h2 className="mt-5 text-xl font-bold text-slate-900">Analyzing your resume</h2>
-          <p className="mt-2 text-sm text-slate-600">Please wait while we process your resume and job description...</p>
+      <main className="scan-loading-shell mx-auto flex min-h-screen max-h-screen w-full max-w-7xl items-start px-4 pt-36 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-xl max-h-[80vh]">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+            <div className="scan-preview scan-blink rounded-lg border border-slate-200 bg-white">
+              {loadingPreviewUrl ? (
+                <img src={loadingPreviewUrl} alt="Resume scanning preview" className="w-full max-h-[80vh] object-contain" />
+              ) : (
+                <div className="flex h-[28rem] items-center justify-center text-sm text-slate-500">Analyzing your resume...</div>
+              )}
+              <span className="scan-beam-diagonal" />
+            </div>
+          </div>
         </div>
       </main>
     )
