@@ -36,7 +36,7 @@ export function AnalyzePage() {
 
   if (isLoading) {
     return (
-      <main className="scan-loading-shell mx-auto flex min-h-screen max-h-screen w-full max-w-7xl items-start px-4 pt-36 sm:px-6 lg:px-8">
+      <main className="scan-loading-shell mx-auto flex min-h-screen w-full max-w-7xl items-start px-4 pt-36 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-xl max-h-[80vh]">
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
             <div className="scan-preview scan-blink rounded-lg border border-slate-200 bg-white">

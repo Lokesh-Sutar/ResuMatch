@@ -22,8 +22,8 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
   const previewUrlRef = useRef<string | null>(null)
 
   const isDisabled = useMemo(
-    () => isLoading || !resumeFile || jobDescription.trim().length === 0,
-    [isLoading, resumeFile, jobDescription],
+    () => isLoading || isPreviewLoading || !resumeFile || jobDescription.trim().length === 0,
+    [isLoading, isPreviewLoading, resumeFile, jobDescription],
   )
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -235,7 +235,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
         onSubmit={handleSubmit}
         className={`mt-5 grid gap-5 transition-all duration-500 ease-out ${resumeFile ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}
       >
-        <div className="space-y-4" data-aos="fade-right">
+        <div className="space-y-4" data-aos="fade-up">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">Resume (PDF)</span>
             <div className="relative">
@@ -279,7 +279,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FontAwesomeIcon icon={faPaperPlane} />
-            {isLoading ? 'Analyzing...' : 'Analyze Resume'}
+            {isLoading ? 'Analyzing...' : isPreviewLoading ? 'Preparing Preview...' : 'Analyze Resume'}
           </button>
         </div>
 
