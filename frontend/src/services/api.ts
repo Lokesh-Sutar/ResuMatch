@@ -1,6 +1,8 @@
 import type { AnalysisResponse } from '../types/analysis'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || 'http://localhost:8000'
+const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+const isLocalHost = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)
+const API_BASE_URL = configuredBaseUrl || (isLocalHost ? 'http://localhost:8000' : '')
 const ANALYZE_ENDPOINT = `${API_BASE_URL}/api/analyze`
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 120000)
 

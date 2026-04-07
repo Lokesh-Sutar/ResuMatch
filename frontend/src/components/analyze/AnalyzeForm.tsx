@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCloudArrowUp, faFilePdf, faPaperPlane, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
-import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+
+const PDF_WORKER_SRC =
+  import.meta.env.VITE_PDF_WORKER_SRC?.trim() || 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs'
 
 interface AnalyzeFormProps {
   isLoading: boolean
@@ -87,7 +89,7 @@ export function AnalyzeForm({ isLoading, onAnalyze }: AnalyzeFormProps) {
 
       try {
         const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC
 
         const bytes = new Uint8Array(await resumeFile.arrayBuffer())
         const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
